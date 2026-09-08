@@ -1,5 +1,5 @@
 {
-  "refresh_seconds": 60,
+  "refresh_seconds": 300,
   "watcher_seconds": 120,
   "alert_cooldown_minutes": 30,
   "impact_alert_score": 65,
