@@ -1,0 +1,46 @@
+{
+  "refresh_seconds": 60,
+  "watcher_seconds": 120,
+  "alert_cooldown_minutes": 30,
+  "impact_alert_score": 65,
+  "move_alert_pct": 0.5,
+  "watchlist": [
+    {
+      "label": "Gold",
+      "symbol": "XAU/USD",
+      "asset": "gold"
+    },
+    {
+      "label": "EUR/USD",
+      "symbol": "EUR/USD",
+      "asset": "eurusd"
+    },
+    {
+      "label": "GBP/USD",
+      "symbol": "GBP/USD",
+      "asset": "gbpusd"
+    },
+    {
+      "label": "USD/JPY",
+      "symbol": "USD/JPY",
+      "asset": "usdjpy"
+    },
+    {
+      "label": "S&P 500 ETF",
+      "symbol": "SPY",
+      "asset": "stocks"
+    },
+    {
+      "label": "Nasdaq ETF",
+      "symbol": "QQQ",
+      "asset": "stocks"
+    },
+    {
+      "label": "Oil ETF",
+      "symbol": "USO",
+      "asset": "oil"
+    }
+  ],
+  "news_query": "(gold OR dollar OR fed OR inflation OR cpi OR jobs OR payroll OR oil OR opec OR geopolitical OR sanctions OR war OR stocks OR markets OR interest rates OR central bank)",
+  "news_hours": 4
+}
