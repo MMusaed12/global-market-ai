@@ -53,8 +53,7 @@ def saudi_history(symbol):
 
 with st.sidebar:
     st.header('التحكم')
-    refresh = st.select_slider('تحديث الواجهة', [300, 600, 900, 1800], value=int(CFG.get('refresh_seconds', 300)), format_func=lambda x: f'{x//60} دقائق')
-    global_symbols = [x['symbol'] for x in CFG['watchlist']]
+refresh = st.select_slider('تحديث الواجهة', [300, 600, 900, 1800], value=300, format_func=lambda x: f'{x//60} دقائق')    global_symbols = [x['symbol'] for x in CFG['watchlist']]
     chosen_global = st.multiselect('الأسواق العالمية', global_symbols, default=global_symbols[:4])
     saudi_symbols = [x['symbol'] for x in CFG.get('saudi_watchlist', [])]
     chosen_saudi = st.multiselect('🇸🇦 السوق السعودي', saudi_symbols, default=saudi_symbols[:4])
