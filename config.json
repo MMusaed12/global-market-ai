@@ -42,5 +42,42 @@
     }
   ],
   "news_query": "(gold OR dollar OR fed OR inflation OR cpi OR jobs OR payroll OR oil OR opec OR geopolitical OR sanctions OR war OR stocks OR markets OR interest rates OR central bank)",
-  "news_hours": 4
+  "news_hours": 4,
+  "saudi_watchlist": [
+    {
+      "label": "تاسي",
+      "symbol": "^TASI.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "أرامكو",
+      "symbol": "2222.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "الراجحي",
+      "symbol": "1120.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "الأهلي",
+      "symbol": "1180.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "STC",
+      "symbol": "7010.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "أكوا باور",
+      "symbol": "2082.SR",
+      "asset": "saudi"
+    },
+    {
+      "label": "معادن",
+      "symbol": "1211.SR",
+      "asset": "saudi"
+    }
+  ]
 }

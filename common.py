@@ -1,5 +1,7 @@
 
-import os, json, sqlite3, hashlib
+import os, json, sqlite3, hashlib, math, re
+import time
+from urllib.parse import quote as urlquote
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 import requests
@@ -30,23 +32,80 @@ def td(endpoint, params):
     if not TWELVE_KEY:
         raise RuntimeError("TWELVEDATA_API_KEY غير موجود في ملف .env")
     p = dict(params); p["apikey"] = TWELVE_KEY
-    r = requests.get("https://api.twelvedata.com/"+endpoint, params=p, timeout=20)
-    r.raise_for_status()
-    d = r.json()
-    if isinstance(d, dict) and d.get("status") == "error":
-        raise RuntimeError(d.get("message","Twelve Data error"))
+    d = request_json("https://api.twelvedata.com/" + endpoint, params=p, source="Twelve Data")
+    if not isinstance(d, dict) or d.get("status") == "error":
+        raise RuntimeError("Twelve Data: تعذر جلب البيانات؛ تحقق من الرمز والخطة وحد الطلبات.")
     return d
 
 def quote(symbol):
     return td("quote", {"symbol":symbol})
 
+def refresh_seconds(value):
+    try:
+        value = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return 300
+    return value if value in (300, 600, 900, 1800) else 300
+
+
+_retry_after = {}
+
+
+def request_json(url, *, params=None, source="المصدر"):
+    if time.monotonic() < _retry_after.get(source, 0):
+        raise RuntimeError(f"{source}: الطلبات متوقفة مؤقتًا؛ حاول لاحقًا.")
+    try:
+        r = requests.get(url, params=params, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+        if r.status_code == 429:
+            _retry_after[source] = time.monotonic() + 300
+            raise RuntimeError(f"{source}: تم تجاوز حد الطلبات؛ انتظر موعد التحديث التالي.")
+        if r.status_code >= 400:
+            raise RuntimeError(f"{source}: تعذر الاتصال (HTTP {r.status_code}).")
+        return r.json()
+    except (requests.RequestException, ValueError):
+        _retry_after[source] = time.monotonic() + 60
+        raise RuntimeError(f"{source}: تعذر الاتصال أو استلام بيانات صالحة.") from None
+
+
+def yahoo_history(symbol, range_="6mo", interval="1d"):
+    data = request_json("https://query1.finance.yahoo.com/v8/finance/chart/" + urlquote(symbol, safe=""),
+                        params={"range": range_, "interval": interval}, source="Yahoo Finance")
+    chart = data.get("chart") or {}
+    if chart.get("error") or not chart.get("result"):
+        raise RuntimeError("Yahoo Finance: لا تتوفر بيانات لهذا الرمز.")
+    return chart["result"][0]
+
+
+def yahoo_quote(symbol):
+    data = yahoo_history(symbol, range_="5d")
+    meta = data.get("meta") or {}
+    price = meta.get("regularMarketPrice")
+    previous = meta.get("previousClose", meta.get("chartPreviousClose"))
+    # chartPreviousClose may precede the requested range; use the preceding daily bar.
+    bars = ((data.get("indicators") or {}).get("quote") or [{}])[0].get("close") or []
+    closes = [x for x in bars if x is not None]
+    if len(closes) >= 2:
+        previous = closes[-2]
+    if price is None:
+        price = closes[-1] if closes else None
+    if price is None:
+        raise RuntimeError("Yahoo Finance: السعر غير متاح حاليًا.")
+    return {"close": price, "previous_close": previous}
+
+
 def pct(q):
-    try: return float(q.get("percent_change"))
-    except Exception:
-        try:
-            p=float(q["close"]); prev=float(q["previous_close"])
-            return (p-prev)/prev*100
-        except Exception: return None
+    try:
+        value = float(q.get("percent_change"))
+        if math.isfinite(value):
+            return value
+    except (TypeError, ValueError):
+        pass
+    try:
+        price, previous = float(q["close"]), float(q["previous_close"])
+        value = (price - previous) / previous * 100
+        return value if math.isfinite(value) else None
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
 
 def gdelt_news():
     now = datetime.now(timezone.utc)
@@ -57,19 +116,21 @@ def gdelt_news():
       "startdatetime":start.strftime("%Y%m%d%H%M%S"),
       "enddatetime":now.strftime("%Y%m%d%H%M%S")
     }
-    r=requests.get("https://api.gdeltproject.org/api/v2/doc/doc", params=params, timeout=25)
-    r.raise_for_status()
-    return r.json().get("articles",[]) or []
+    data = request_json("https://api.gdeltproject.org/api/v2/doc/doc", params=params, source="GDELT")
+    return data.get("articles", []) or []
 
 def telegram(text):
     if not TG_TOKEN or not TG_CHAT_ID: return False
-    r=requests.post(
-      f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-      json={"chat_id":TG_CHAT_ID,"text":text,"disable_web_page_preview":True},
-      timeout=20
-    )
-    r.raise_for_status()
-    return True
+    try:
+        r=requests.post(
+          f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+          json={"chat_id":TG_CHAT_ID,"text":text,"disable_web_page_preview":True},
+          timeout=20
+        )
+        r.raise_for_status()
+        return bool(r.json().get("ok"))
+    except (requests.RequestException, ValueError):
+        raise RuntimeError("Telegram: تعذر إرسال التنبيه.") from None
 
 RULES = [
   (["fed","federal reserve","interest rate","rate hike","hawkish","inflation","cpi"], "Fed/Inflation", 82, "↑","↑","↓","↔"),
@@ -99,7 +160,9 @@ def analyze(title):
     t = (title or "").lower()
     best = ("General market", 45, "↔","↔","↔","↔")
     for keys, cat, score, gold, usd, stocks, oil in RULES:
-        hits=sum(1 for k in keys if k in t)
+        hits=sum(1 for k in keys if re.search(r"(?<!\w)" + re.escape(k) + r"(?!\w)", t))
+        if cat == "Fed/Inflation" and any(k in t for k in ["rate cut", "dovish", "lower rates"]):
+            continue
         if hits:
             candidate=(cat, min(99, score + (hits-1)*4), gold, usd, stocks, oil)
             if candidate[1] > best[1]: best=candidate
