@@ -1,3 +1,6 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from news_feed import NewsStore, SOURCES
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -22,9 +25,6 @@ def cached_global_quote(symbol):
 def cached_saudi_quote(symbol):
     return yahoo_quote(symbol)
 
-@st.cache_data(ttl=900, show_spinner=False)
-def cached_news():
-    return gdelt_news()
 
 @st.cache_data(ttl=600, show_spinner=False)
 def global_history(symbol, interval):
@@ -67,6 +67,53 @@ with st.sidebar:
 if not TWELVE_KEY:
     st.error('أضف TWELVEDATA_API_KEY في Secrets داخل Streamlit.')
     st.info('الأسواق العالمية تحتاج المفتاح؛ السوق السعودي والأخبار متاحان بدونه.')
+
+@st.cache_resource
+def news_store():
+    return NewsStore()
+
+
+def news_time(timestamp):
+    return datetime.fromtimestamp(timestamp, ZoneInfo('Asia/Riyadh')).strftime('%d/%m %H:%M') if timestamp else 'لم ينجح الاتصال بعد'
+
+
+@st.fragment(run_every=60)
+def render_news():
+    st.subheader('📰 آخر الأخبار')
+    st.caption('فحص كل دقيقة أثناء فتح التطبيق • الوقت بتوقيت الرياض • سرعة وصول الخبر تعتمد على المصدر')
+    selected = st.multiselect('مصادر الأخبار', [s['name'] for s in SOURCES],
+                              default=[s['name'] for s in SOURCES], key='news_sources')
+    result = news_store().get()
+    with st.expander('حالة المصادر ووقت آخر اتصال ناجح'):
+        for source in SOURCES:
+            state = result['states'].get(source['id'], {})
+            route = 'عبر Google News؛ قد تتأخر الفهرسة' if state.get('via') == 'google' else 'من قناة المصدر مباشرة'
+            status = 'تعذر التحديث؛ نحتفظ بآخر الأخبار' if state.get('error') else ('متاح' if state.get('success') else 'جارٍ الاتصال')
+            st.write(f"{source['name']} — {status}")
+            st.caption(f"{route} • آخر نجاح: {news_time(state.get('success'))}")
+        if result['persistence_error']:
+            st.caption('تعذر حفظ الأخبار على القرص؛ تبقى محفوظة مؤقتًا أثناء تشغيل التطبيق.')
+    articles = [a for a in result['articles'] if a['name'] in selected]
+    if not selected:
+        st.info('اختر مصدرًا لعرض أخباره.')
+    elif not articles:
+        st.info('لا توجد أخبار حديثة متاحة الآن. سيحاول التطبيق تلقائيًا؛ راجع حالة المصادر أعلاه.')
+    shown = set()
+    for article in articles:
+        identity = article['url']
+        if identity in shown:
+            continue
+        shown.add(identity)
+        note = ' • محفوظة؛ تعذر تحديث المصدر' if article['stale'] else ''
+        route = ' • عبر Google News' if article['via'] == 'google' else ''
+        st.caption(f"{article['name']} • نُشر {news_time(article['published'])}{route}{note}")
+        st.link_button(article['title'], article['url'], use_container_width=True)
+        if len(shown) >= 30:
+            break
+    st.divider()
+
+
+render_news()
 
 @st.fragment(run_every=refresh)
 def render_dashboard():
@@ -117,7 +164,7 @@ def render_dashboard():
             cols[i % len(cols)].metric(item['label'], f'{price}{suffix}', None if p is None else f'{p:+.2f}%')
 
     st.divider()
-    a, b = st.columns([1.2, 1])
+    a = st.container()
 
     with a:
         st.subheader('🧠 آخر التنبيهات والتحليل')
@@ -132,23 +179,6 @@ def render_dashboard():
                 st.caption(f"ذهب {r['gold']} | دولار {r['usd']} | أسهم {r['stocks']} | نفط {r['oil']} · {r['source']}")
                 if r['url']:
                     st.markdown(f"[فتح المصدر]({r['url']})")
-
-    with b:
-        st.subheader('📰 تحليل أخبار مباشر')
-        try:
-            news = cached_news()[:10]
-            if not news:
-                st.info('لا توجد أخبار جديدة ضمن النافذة الحالية.')
-            for art in news:
-                x = analyze(art.get('title', ''))
-                st.markdown(f"**{x['score']}/100 · {x['category']}**")
-                if art.get('url'):
-                    st.markdown(f"[{art.get('title','خبر')}]({art['url']})")
-                else:
-                    st.write(art.get('title', 'خبر'))
-                st.caption(f"Gold {x['gold']} · USD {x['usd']} · Stocks {x['stocks']} · Oil {x['oil']}")
-        except Exception as e:
-            st.warning(str(e))
 
     st.divider()
     st.subheader('📈 رسم السوق')
