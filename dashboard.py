@@ -55,9 +55,9 @@ with st.sidebar:
     st.header('التحكم')
 refresh = st.select_slider('تحديث الواجهة', [300, 600, 900, 1800], value=300, format_func=lambda x: f'{x//60} دقائق') 
 global_symbols = [x['symbol'] for x in CFG['watchlist']]
-    chosen_global = st.multiselect('الأسواق العالمية', global_symbols, default=global_symbols[:4])
-    saudi_symbols = [x['symbol'] for x in CFG.get('saudi_watchlist', [])]
-    chosen_saudi = st.multiselect('🇸🇦 السوق السعودي', saudi_symbols, default=saudi_symbols[:4])
+chosen_global = st.multiselect('الأسواق العالمية', global_symbols, default=global_symbols[:4])
+saudi_symbols = [x['symbol'] for x in CFG.get('saudi_watchlist', [])]
+chosen_saudi = st.multiselect('🇸🇦 السوق السعودي', saudi_symbols, default=saudi_symbols[:4])
     st.metric('حد تنبيه الحدث', f"{CFG.get('impact_alert_score',65)}/100")
     if st.button('تحديث الآن', use_container_width=True):
         st.cache_data.clear()
